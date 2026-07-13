@@ -1,0 +1,11 @@
+# 秘密情報・ローカル状態
+.env
+latest_tweet_ids.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
