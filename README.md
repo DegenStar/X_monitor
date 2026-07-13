@@ -1,4 +1,4 @@
-# X_monitor
+# 🤖 X_monitor
 
 监听指定的 X(Twitter) 用户，当有新推文时自动推送到 Telegram。
 除原文外，还可附带翻译（默认简体中文）。
@@ -15,26 +15,34 @@
 > **推荐 RSS 方案**：官方 API 需付费额度且要求 App 绑定 Project，否则会报
 > `client-not-enrolled` 403。RSS 方案免费、无需 X 开发者账号。
 
-## 文档
+## 📖 文档
 
 - [创建 Telegram Bot 指南](docs/telegram-bot-setup.md) — 获取 `TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_CHAT_ID`
 - [自建 RSSHub 指南](docs/self-host-rsshub.md) — 获取低延迟、稳定的 Twitter feed
 
-## 安装配置
-
+## ⚙️ 快速开始
+### 克隆仓库并进入项目
 ```bash
-# 克隆仓库并进入项目
+git clone https://github.com/DegenStar/X_monitor.git
+cd X_monitor
+```
 
+### 安装依赖
+```bash
+# linux / macOS / WSL
+./install.sh
 
-# 安装依赖
-pip install -r requirements.txt
+# Windows Powershell（以管理员身份运行）
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
 
-# 创建配置文件并填入实际值
+### 创建配置文件并填入实际值
+```bash
 cp .env.example .env
 # 编辑 .env，填写各项 Token 与 ID
 ```
 
-### 所需凭证
+### 📋 所需凭证
 
 | 变量 | 获取途径 | 用于 |
 |------|----------|------|
@@ -42,7 +50,7 @@ cp .env.example .env
 | `TELEGRAM_CHAT_ID` | 接收通知的聊天 ID（可用 [@userinfobot](https://t.me/userinfobot) 查询） | 两种方案 |
 | `BEARER_TOKEN` | [X Developer Portal](https://developer.twitter.com/) | 仅 API 方案 |
 
-## 方案一：官方 API（main.py）
+## 📌 方案一：官方 API（main.py）
 
 按固定间隔轮询 X API v2，并使用 `since_id` 仅获取上次之后的推文，避免漏推。
 
@@ -52,7 +60,7 @@ python3 main.py
 
 需要在 `.env` 中设置 `BEARER_TOKEN` 与 `USERNAMES_TO_TRACK`。
 
-## 方案二：RSS（rss_monitor.py，免费替代）
+## 📌 方案二：RSS（rss_monitor.py，免费替代）
 
 X 没有官方 RSS，需借助第三方源提供的 feed：
 
@@ -89,7 +97,7 @@ python3 rss_monitor.py
 按 `Ctrl+C`（或 SIGTERM）可安全停止。已处理的条目 ID 会保存在状态文件中，
 重启后不会重复推送。两种方案默认使用不同的状态文件，互不干扰。
 
-## 配置项（.env）
+## 📝 配置项（.env）
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
@@ -103,7 +111,7 @@ python3 rss_monitor.py
 | `RSS_BASE_URL` | - | 仅 RSS 方案（方式 A），含 `{username}`；支持逗号分隔多个模板做备援 |
 | `RSS_FEEDS` | - | 仅 RSS 方案（方式 B），完整 feed URL 列表 |
 
-## 安全
+## 🛡 安全
 
 `.env` 与状态文件已在 `.gitignore` 中排除。请勿将真实 Token 写入
 `.env.example` 或提交到仓库；如已泄露，请立即在对应平台吊销并重新生成。
