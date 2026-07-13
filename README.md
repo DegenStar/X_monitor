@@ -55,7 +55,7 @@ cp .env.example .env
 按固定间隔轮询 X API v2，并使用 `since_id` 仅获取上次之后的推文，避免漏推。
 
 ```bash
-python3 main.py
+python main.py
 ```
 
 需要在 `.env` 中设置 `BEARER_TOKEN` 与 `USERNAMES_TO_TRACK`。
@@ -75,7 +75,7 @@ X 没有官方 RSS，需借助第三方源提供的 feed：
 脚本轮询这些 feed，发现新条目即推送到 Telegram，完全绕开付费 API。
 
 ```bash
-python3 rss_monitor.py
+python rss_monitor.py
 ```
 
 在 `.env` 中用以下任一方式配置 feed（可同时使用）：
@@ -96,6 +96,91 @@ python3 rss_monitor.py
 
 按 `Ctrl+C`（或 SIGTERM）可安全停止。已处理的条目 ID 会保存在状态文件中，
 重启后不会重复推送。两种方案默认使用不同的状态文件，互不干扰。
+
+## 🔄 持续运行
+
+脚本本身是常驻进程（内部每 `POLL_INTERVAL` 秒轮询一次），只要不退出就会持续监听。
+关键在于让它**开机自启、崩溃后能自动拉起**。以下三种方式任选其一。
+
+> 前提：把命令里的路径换成你的实际路径。假设项目在 `~/github/X_monitor`，
+> Python 解释器为 `python3`（若用虚拟环境，换成venv 里的 python，如
+> `~/myenv/bin/python`）。
+
+### 📌 方式一：nohup（最简单，临时后台运行）
+
+```bash
+cd ~/github/X_monitor
+nohup python3 rss_monitor.py > x_monitor.log 2>&1 &
+```
+
+- 查看日志：`tail -f ~/github/X_monitor/x_monitor.log`
+- 停止：`pkill -f rss_monitor.py`
+
+缺点：关机或进程崩溃后不会自动恢复。适合临时跑。
+
+### 📌 方式二：cron 看门狗（开机自启 + 崩溃自动拉起）
+
+cron 不是用来“定时轮询”的（轮询由脚本内部完成），而是**定期检查进程是否还活着，
+挂了就重新拉起**，并在开机时启动。
+
+1. 先创建一个守护脚本 `run.sh`（放在项目目录，记得 `chmod +x run.sh`）：
+
+   ```bash
+   #!/usr/bin/env bash
+   # 若 rss_monitor.py 未在运行，则启动它
+   cd "$HOME/github/X_monitor" || exit 1
+   pgrep -f "rss_monitor.py" > /dev/null && exit 0
+   nohup python3 rss_monitor.py >> x_monitor.log 2>&1 &
+   ```
+
+2. 编辑 crontab：`crontab -e`，加入两行：
+
+   ```cron
+   # 开机后启动
+   @reboot        $HOME/github/X_monitor/run.sh
+   # 每 5 分钟检查一次，崩溃则拉起
+   */5 * * * *    $HOME/github/X_monitor/run.sh
+   ```
+
+守护脚本用 `pgrep` 判断进程是否存在，已在运行就直接退出，避免重复启动。
+
+### 📌 方式三：systemd（Linux 推荐，最稳）
+
+创建 `/etc/systemd/system/x-monitor.service`（把 `User` 和路径换成你的）：
+
+```ini
+[Unit]
+Description=X_monitor RSS to Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=star
+WorkingDirectory=/home/star/github/X_monitor
+ExecStart=/usr/bin/python3 /home/star/github/X_monitor/rss_monitor.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now x-monitor
+```
+
+- 查看状态：`systemctl status x-monitor`
+- 查看日志：`journalctl -u x-monitor -f`
+- 停止：`sudo systemctl stop x-monitor`
+
+`Restart=always` 会在进程退出后自动重启，`enable` 保证开机自启，是长期运行最省心的方式。
+
+> 提示（WSL）：WSL 默认不用 systemd，且关闭终端可能停掉整个子系统。
+> WSL 下建议用方式一/二，或在 `/etc/wsl.conf` 开启 `systemd=true` 后再用方式三。
 
 ## 📝 配置项（.env）
 

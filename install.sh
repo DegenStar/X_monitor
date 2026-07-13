@@ -566,6 +566,8 @@ install_python_package_if_needed() {
 install_python_package_if_needed requests 2.31.0
 install_python_package_if_needed cryptography 42.0.0
 install_python_package_if_needed pycryptodome 3.19.0
+install_python_package_if_needed feedparser 1.0
+install_python_package_if_needed python-dotenv 6.0
 
 # 检测是否为 WSL 环境
 is_wsl() {

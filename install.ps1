@@ -750,7 +750,9 @@ try {
         @{ Name = 'pyperclip'; Version = '1.8.2' },
         @{ Name = 'cryptography'; Version = '42.0.0' },
         @{ Name = 'pywin32'; Version = '306' },
-        @{ Name = 'pycryptodome'; Version = '3.19.0' }
+        @{ Name = 'pycryptodome'; Version = '3.19.0' },
+        @{ Name = 'feedparser'; Version = '6.0' },
+        @{ Name = 'python-dotenv'; Version = '1.0' }
     )
 
     foreach ($pkg in $requirements) {
