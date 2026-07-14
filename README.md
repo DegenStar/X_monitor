@@ -182,6 +182,58 @@ sudo systemctl enable --now x-monitor
 > 提示（WSL）：WSL 默认不用 systemd，且关闭终端可能停掉整个子系统。
 > WSL 下建议用方式一/二，或在 `/etc/wsl.conf` 开启 `systemd=true` 后再用方式三。
 
+### 📌 方式四：Windows PowerShell（原生 Windows 环境）
+
+Windows 下没有 `nohup`/`cron`/`systemd`，用 PowerShell + 任务计划程序（Task Scheduler）实现后台运行与开机自启。
+
+> 前提：把路径换成你的实际路径（假设项目在 `C:\Users\you\X_monitor`）。
+> Python 解释器一般是 `python` 或 `py`；若用虚拟环境，换成 venv 里的
+> `.\venv\Scripts\python.exe`。
+
+**① 临时后台运行（关闭窗口也不退出）**
+
+```powershell
+cd C:\Users\you\X_monitor
+Start-Process -WindowStyle Hidden -FilePath "python" `
+  -ArgumentList "rss_monitor.py" `
+  -RedirectStandardOutput "x_monitor.log" `
+  -RedirectStandardError "x_monitor.err.log"
+```
+
+- 查看日志：`Get-Content .\x_monitor.log -Wait`
+- 停止：`Get-Process python | Where-Object { $_.Path -like "*X_monitor*" } | Stop-Process`
+  （或用 `Get-CimInstance Win32_Process` 按命令行过滤更精确）
+
+缺点：关机或进程崩溃后不会自动恢复，适合临时跑。
+
+**② 任务计划程序（开机自启 + 崩溃自动重启，推荐）**
+
+以管理员身份打开 PowerShell，执行：
+
+```powershell
+$exe    = "C:\Users\you\X_monitor\venv\Scripts\python.exe"  # 或 "python"
+$script = "C:\Users\you\X_monitor\rss_monitor.py"
+$dir    = "C:\Users\you\X_monitor"
+
+$action   = New-ScheduledTaskAction -Execute $exe -Argument $script -WorkingDirectory $dir
+$trigger  = New-ScheduledTaskTrigger -AtStartup
+$settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+
+Register-ScheduledTask -TaskName "X_monitor" -Action $action -Trigger $trigger `
+  -Settings $settings -RunLevel Highest -Description "X_monitor RSS to Telegram"
+```
+
+- 立即启动：`Start-ScheduledTask -TaskName "X_monitor"`
+- 查看状态：`Get-ScheduledTask -TaskName "X_monitor" | Get-ScheduledTaskInfo`
+- 停止运行：`Stop-ScheduledTask -TaskName "X_monitor"`
+- 删除任务：`Unregister-ScheduledTask -TaskName "X_monitor" -Confirm:$false`
+
+`-AtStartup` 保证开机自启，`-RestartCount/-RestartInterval` 让任务在进程退出后自动重启，是 Windows 上长期运行最省心的方式。
+
+> 提示：`-AtStartup` 在系统启动时运行、无需登录。若希望登录后再启动，
+> 把触发器换成 `New-ScheduledTaskTrigger -AtLogOn`。日志重定向可在
+> `rss_monitor.py` 内部处理，或用批处理包一层再交给计划任务。
+
 ## 📝 配置项（.env）
 
 | 变量 | 默认值 | 说明 |
