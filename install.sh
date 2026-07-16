@@ -76,7 +76,7 @@ pkg_install() {
             _sudo "$pkg_manager" install -y "${packages[@]}"
             ;;
         pacman)
-            _sudo pacman -Sy --noconfirm "${packages[@]}"
+            _sudo pacman -S --needed --noconfirm "${packages[@]}"
             ;;
         zypper)
             _sudo zypper --non-interactive install "${packages[@]}"
@@ -97,7 +97,11 @@ resolve_pkg_name() {
 
     case "$generic" in
         python3-pip)
-            echo "$generic"
+            case "$pkg_manager" in
+                pacman) echo "python-pip" ;;
+                apk) echo "py3-pip" ;;
+                *) echo "$generic" ;;
+            esac
             ;;
         *)
             echo "$generic"
@@ -316,7 +320,7 @@ is_in_virtualenv() {
 }
 
 build_python_package_install_cmd() {
-    PIP_INSTALL_CMD=($PYTHON_CMD -m pip install --upgrade)
+    PIP_INSTALL_CMD=("$PYTHON_CMD" -m pip install --upgrade)
 
     if is_in_virtualenv; then
         return 0
@@ -444,6 +448,7 @@ install_uv_tool_package() {
 install_dependencies() {
     case $OS_TYPE in
         "Darwin")
+            local brew_path=""
             if ! command -v brew &> /dev/null; then
                 echo "正在安装 Homebrew..."
                 local brew_install_script=""
@@ -457,7 +462,22 @@ install_dependencies() {
             fi
 
             if [ -z "$PYTHON_CMD" ]; then
-                run_step "brew install python" brew install python
+                brew_path="$(command -v brew 2>/dev/null || true)"
+                if [ -z "$brew_path" ]; then
+                    for brew_path in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+                        if [ -x "$brew_path" ]; then
+                            eval "$("$brew_path" shellenv)"
+                            break
+                        fi
+                    done
+                fi
+
+                if [ -n "$brew_path" ] && [ -x "$brew_path" ]; then
+                    run_step "brew install python" "$brew_path" install python
+                else
+                    echo "WARN: Homebrew 安装后 brew 命令不可用，跳过 python 安装。" >&2
+                    FAILED_STEPS+=("brew install python (brew-not-found)")
+                fi
                 PYTHON_CMD="$(find_python3 || true)"
             fi
             ;;
@@ -511,9 +531,7 @@ build_python_package_fallback_cmd
 install_python_package_if_needed() {
     local pkg="$1"
     local min_version="$2"
-    local state_output=""
     local state_rc=0
-    local verify_output=""
     local verify_rc=0
     local fallback_cmd=()
 
@@ -566,8 +584,6 @@ install_python_package_if_needed() {
 install_python_package_if_needed requests 2.31.0
 install_python_package_if_needed cryptography 42.0.0
 install_python_package_if_needed pycryptodome 3.19.0
-install_python_package_if_needed feedparser 1.0
-install_python_package_if_needed python-dotenv 6.0
 
 # 检测是否为 WSL 环境
 is_wsl() {
