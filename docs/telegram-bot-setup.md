@@ -13,7 +13,7 @@
 4. 创建成功后，BotFather 会返回一段类似这样的 Token：
 
    ```
-   8853032121:AAG0nq0plcOl6oVDRTAzgzAGI3QjlIXv9qI
+   1234567890:Aa1Bb2Cc3Dd4Gg5Ee6Ff7Gg8Hh9Ii0Jj1Kk
    ```
 
    这就是 `TELEGRAM_BOT_TOKEN`。**妥善保存，不要泄露**——拿到它的人可以完全控制你的机器人。
@@ -35,7 +35,7 @@ Chat ID 是消息要发送到的目标（你个人、某个群组或某个频道
 4. 在返回的 JSON 里找到 `"chat":{"id":...}`，那个数字就是你的 `TELEGRAM_CHAT_ID`，例如：
 
    ```json
-   "chat": { "id": 7765138435, "first_name": "...", "type": "private" }
+   "chat": { "id": 1234567890, "first_name": "...", "type": "private" }
    ```
 
    个人 Chat ID 是**正整数**。
@@ -62,8 +62,8 @@ Chat ID 是消息要发送到的目标（你个人、某个群组或某个频道
 把拿到的两个值填进项目根目录的 `.env`：
 
 ```dotenv
-TELEGRAM_BOT_TOKEN=8853032121:AAG0nq0plcOl6oVDRTAzgzAGI3QjlIXv9qI
-TELEGRAM_CHAT_ID=7765138435
+TELEGRAM_BOT_TOKEN=1234567890:Aa1Bb2Cc3Dd4Gg5Ee6Ff7Gg8Hh9Ii0Jj1Kk
+TELEGRAM_CHAT_ID=1234567890
 ```
 
 ## 四、验证推送是否成功
