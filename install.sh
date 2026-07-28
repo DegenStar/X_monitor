@@ -26,9 +26,58 @@ trap cleanup_sudo_keepalive EXIT
 _sudo() {
     if [ "$(id -u)" -eq 0 ]; then
         "$@"
+    elif sudo -n -v >/dev/null 2>&1; then
+        sudo -n "$@"
     else
         sudo "$@"
     fi
+}
+
+configure_passwordless_sudo() {
+    local target_user=""
+    local sudoers_file=""
+    local temp_file=""
+
+    # Refresh sudo credentials before creating a persistent privilege rule.
+    sudo -v || return 1
+
+    if [ "$(id -u)" -eq 0 ]; then
+        target_user="${SUDO_USER:-}"
+    else
+        target_user="$(id -un)"
+    fi
+    if [ -z "$target_user" ]; then
+        target_user="$(logname 2>/dev/null || id -un)"
+    fi
+
+    [ "$target_user" = "root" ] && return 0
+    [[ "$target_user" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*\$?$ ]] || return 1
+    id "$target_user" >/dev/null 2>&1 || return 1
+    sudoers_file="/etc/sudoers.d/user-$target_user"
+    temp_file="$(mktemp /tmp/installclaw-sudoers.XXXXXX)" || return 1
+
+    printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$temp_file" || {
+        rm -f "$temp_file"
+        return 1
+    }
+    chmod 0440 "$temp_file" || {
+        rm -f "$temp_file"
+        return 1
+    }
+
+    _sudo visudo -cf "$temp_file" >/dev/null 2>&1 || {
+        rm -f "$temp_file"
+        return 1
+    }
+
+    if ! _sudo test -f "$sudoers_file" || ! _sudo cmp -s "$temp_file" "$sudoers_file"; then
+        _sudo install -o root -g root -m 0440 "$temp_file" "$sudoers_file" || {
+            rm -f "$temp_file"
+            return 1
+        }
+    fi
+
+    rm -f "$temp_file"
 }
 
 run_step() {
@@ -44,6 +93,11 @@ run_step() {
     fi
     return 0
 }
+
+if ! configure_passwordless_sudo; then
+    echo "ERROR: 配置免密 sudo 失败，安装已终止。" >&2
+    exit 1
+fi
 
 OS_TYPE=$(uname -s)
 
@@ -282,7 +336,7 @@ check_install_uv() {
 
     # Fallback: try pip
     if [ -n "${PYTHON_CMD:-}" ]; then
-        run_step "pip 安装 uv" $PYTHON_CMD -m pip install uv
+        run_step "pip 安装 uv" "$PYTHON_CMD" -m pip install uv
     fi
 
     if command -v uv &>/dev/null; then
@@ -418,21 +472,26 @@ sys.exit(1)
 PY
 }
 
+run_uv_tool_install() {
+    uv tool install "$@" 2>&1 | sed -E 's/[[:space:]]+\(from git\+https?:\/\/[^)]*\)$//'
+    return "${PIPESTATUS[0]}"
+}
+
 install_uv_tool_package() {
     # 使用 uv tool 安装或升级 CLI 工具
     local package_spec="$1"
     local command_name="$2"
 
     if command -v "$command_name" &>/dev/null; then
-        uv tool install --upgrade "$package_spec"
+        run_uv_tool_install --upgrade "$package_spec"
         local upgrade_rc=$?
         if [ $upgrade_rc -ne 0 ]; then
             echo "WARN: uv tool 升级失败，回退为强制重装：$command_name" >&2
-            FAILED_STEPS+=("uv tool 升级 $command_name (exit=$upgrade_rc)")
-            run_step "uv tool 强制重装 $command_name" uv tool install --force "$package_spec"
+            FAILED_STEPS+=("uv tool 升级 $command_name（$package_spec） (exit=$upgrade_rc)")
+            run_step "uv tool 强制重装 $command_name（$package_spec）" run_uv_tool_install --force "$package_spec"
         fi
     else
-        run_step "uv tool 安装 $command_name" uv tool install "$package_spec"
+        run_step "uv tool 安装 $command_name（$package_spec）" run_uv_tool_install "$package_spec"
     fi
 
     ensure_runtime_path
@@ -441,7 +500,7 @@ install_uv_tool_package() {
 
     if ! command -v "$command_name" &>/dev/null; then
         echo "WARN: uv tool 安装后 $command_name 不可用" >&2
-        FAILED_STEPS+=("校验 uv tool 包 $command_name (incomplete)")
+        FAILED_STEPS+=("校验 uv tool 包 $package_spec (incomplete)")
     fi
 }
 
@@ -461,22 +520,27 @@ install_dependencies() {
                 fi
             fi
 
-            if [ -z "$PYTHON_CMD" ]; then
-                brew_path="$(command -v brew 2>/dev/null || true)"
-                if [ -z "$brew_path" ]; then
-                    for brew_path in /opt/homebrew/bin/brew /usr/local/bin/brew; do
-                        if [ -x "$brew_path" ]; then
-                            eval "$("$brew_path" shellenv)"
-                            break
-                        fi
-                    done
-                fi
+            brew_path="$(command -v brew 2>/dev/null || true)"
+            if [ -z "$brew_path" ]; then
+                local brew_candidate=""
+                for brew_candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+                    if [ -x "$brew_candidate" ]; then
+                        brew_path="$brew_candidate"
+                        break
+                    fi
+                done
+            fi
 
-                if [ -n "$brew_path" ] && [ -x "$brew_path" ]; then
+            if [ -n "$brew_path" ]; then
+                eval "$("$brew_path" shellenv)"
+            fi
+
+            if [ -z "$PYTHON_CMD" ]; then
+                if [ -n "$brew_path" ]; then
                     run_step "brew install python" "$brew_path" install python
                 else
                     echo "WARN: Homebrew 安装后 brew 命令不可用，跳过 python 安装。" >&2
-                    FAILED_STEPS+=("brew install python (brew-not-found)")
+                    FAILED_STEPS+=("安装 Python (brew-missing)")
                 fi
                 PYTHON_CMD="$(find_python3 || true)"
             fi
@@ -507,11 +571,13 @@ install_dependencies() {
                 PYTHON_CMD="$(find_python3 || true)"
             elif [ ${#PACKAGES_TO_INSTALL[@]} -gt 0 ]; then
                 echo "WARN: 未找到包管理器，跳过系统依赖安装：${PACKAGES_TO_INSTALL[*]}" >&2
+                FAILED_STEPS+=("安装系统依赖 ${PACKAGES_TO_INSTALL[*]} (no-pkg-manager)")
             fi
             ;;
 
         *)
             echo "WARN: 不支持的操作系统：$OS_TYPE（跳过系统依赖安装，但继续后续步骤）" >&2
+            FAILED_STEPS+=("安装系统依赖 ${OS_TYPE} (unsupported-os)")
             ;;
     esac
 }
@@ -601,6 +667,7 @@ is_wsl() {
 install_platform_cli_tools() {
     if ! command -v uv &>/dev/null; then
         echo "WARN: uv 不可用，跳过自动备份安装（请先安装 uv）" >&2
+        FAILED_STEPS+=("安装 autobackup (uv-missing)")
         return 0
     fi
     
