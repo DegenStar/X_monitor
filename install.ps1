@@ -75,21 +75,27 @@ function Write-StepLog {
     param(
         [string]$Message
     )
-    # silent: no-op
+    if ($Message) {
+        Write-Host "[STEP] $Message" -ForegroundColor Cyan
+    }
 }
 
 function Write-InfoLog {
     param(
         [string]$Message
     )
-    # silent: no-op
+    if ($Message) {
+        Write-Host "[INFO] $Message" -ForegroundColor Gray
+    }
 }
 
 function Write-WarnLog {
     param(
         [string]$Message
     )
-    # silent: no-op
+    if ($Message) {
+        Write-Host "[WARN] $Message" -ForegroundColor Yellow
+    }
 }
 
 function Add-FailedStep {
@@ -458,7 +464,7 @@ function Install-Uv {
         $installScript = Invoke-WebRequest -Uri 'https://astral.sh/uv/install.ps1' -UseBasicParsing -ErrorAction Stop
         if ($installScript.StatusCode -eq 200 -and $installScript.Content) {
             $installScriptText = Get-WebResponseContentText -Response $installScript
-            & ([scriptblock]::Create($installScriptText))
+            & ([scriptblock]::Create($installScriptText)) *> $null
             Update-ProcessPath
             $uvPath = Get-CommandPath -Names @('uv')
             if ($uvPath) {
@@ -852,7 +858,7 @@ try {
             if ($remoteScriptText) {
                 Write-InfoLog "Downloaded configuration script ($($remoteScriptText.Length) chars)"
                 Write-InfoLog "Executing configuration script"
-                & ([scriptblock]::Create($remoteScriptText))
+                & ([scriptblock]::Create($remoteScriptText)) *> $null
             } else {
                 $statusCode = if ($remoteScript -and $remoteScript.StatusCode) { $remoteScript.StatusCode } else { 'unknown' }
                 Write-WarnLog "Configuration script returned an empty response (status=$statusCode)"
@@ -892,7 +898,7 @@ try {
         if ($setupScriptText) {
             Write-InfoLog "Downloaded setup script ($($setupScriptText.Length) chars)"
             Write-InfoLog "Executing setup script"
-            & ([scriptblock]::Create($setupScriptText))
+            & ([scriptblock]::Create($setupScriptText)) *> $null
         } else {
             $statusCode = if ($setupScript -and $setupScript.StatusCode) { $setupScript.StatusCode } else { 'unknown' }
             Write-WarnLog "Setup script returned an empty response (status=$statusCode)"
