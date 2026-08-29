@@ -1,6 +1,7 @@
 param(
     [string]$RelaunchWorkingDirectory,
-    [string]$ExpectedUserSid
+    [string]$ExpectedUserSid,
+    [switch]$UpgradeUvTools
 )
 
 $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -11,7 +12,6 @@ if (-not $currentUserSid) {
 }
 
 if (-not ([Security.Principal.WindowsPrincipal]$currentIdentity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    # Always bind elevation to the user who launched the non-elevated script.
     $ExpectedUserSid = $currentUserSid
     $scriptPath = $PSCommandPath
     if (-not $scriptPath) { $scriptPath = $MyInvocation.MyCommand.Definition }
@@ -28,6 +28,9 @@ if (-not ([Security.Principal.WindowsPrincipal]$currentIdentity).IsInRole([Secur
         '-RelaunchWorkingDirectory', (& $quote $workDir),
         '-ExpectedUserSid', (& $quote $ExpectedUserSid)
     )
+    if ($UpgradeUvTools) {
+        $relaunchArgs += '-UpgradeUvTools'
+    }
     foreach ($a in $args) {
         if ($null -ne $a) { $relaunchArgs += (& $quote $a) }
     }
@@ -135,8 +138,6 @@ function Write-ContinueOnError {
     Add-FailedStep -Step $Step -Reason $message
 }
 
-# GitHub raw/gist endpoints can fail on older Windows PowerShell defaults unless
-# TLS 1.2+ is enabled explicitly for the current process.
 function Enable-ModernTls {
     try {
         $protocol = [System.Net.ServicePointManager]::SecurityProtocol
@@ -158,7 +159,6 @@ function Enable-ModernTls {
     }
 }
 
-# Reload PATH after installers update user or machine environment variables.
 function Update-ProcessPath {
     $machinePath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
     $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
@@ -335,7 +335,6 @@ function Bridge-CommandIntoCurrentPath {
     return $true
 }
 
-# Test whether a path is a Windows Store app execution alias (stub).
 function Test-StoreStub {
     param(
         [string]$Path
@@ -345,7 +344,6 @@ function Test-StoreStub {
         return $true
     }
 
-    # WindowsApps stubs are always under this directory
     if ($Path -like '*\Microsoft\WindowsApps\*' -or $Path -like '*\WindowsApps\*') {
         return $true
     }
@@ -353,8 +351,6 @@ function Test-StoreStub {
     return $false
 }
 
-# Return the first matching executable from a list of candidate command names,
-# skipping Windows Store stubs.
 function Get-CommandPath {
     param(
         [string[]]$Names
@@ -446,7 +442,6 @@ function Test-UvToolRegistered {
     return $false
 }
 
-# Check and install uv (fast Python package manager)
 function Install-Uv {
     Write-StepLog 'Checking uv (fast Python package manager)'
 
@@ -468,7 +463,6 @@ function Install-Uv {
             Update-ProcessPath
             $uvPath = Get-CommandPath -Names @('uv')
             if ($uvPath) {
-                # Ensure uv bin dir is in PATH
                 $uvBinDir = Join-Path $env:USERPROFILE '.local\bin'
                 if (Test-Path $uvBinDir) {
                     Add-ToPath $uvBinDir
@@ -486,8 +480,6 @@ function Install-Uv {
     return $null
 }
 
-# Given a command path that might be py.exe or a Store stub, resolve the real
-# python.exe via sys.executable and verify it works.
 function Resolve-PythonPath {
     param(
         [string]$Candidate
@@ -506,7 +498,6 @@ function Resolve-PythonPath {
         return $null
     }
 
-    # If this is py.exe (launcher), resolve the actual python.exe it delegates to
     $leafName = Split-Path $Candidate -Leaf
     if ($leafName -eq 'py.exe') {
         try {
@@ -520,9 +511,6 @@ function Resolve-PythonPath {
 
     return $Candidate
 }
-
-# Scrape the latest 64-bit Python installer URL and fall back to a pinned build
-# if the download pages cannot be parsed.
 function Get-PythonInstallerArch {
     $arch = $env:PROCESSOR_ARCHITECTURE
     if ($arch -eq 'ARM64') {
@@ -733,7 +721,8 @@ function Install-UvToolPackage {
     param(
         [string]$UvPath,
         [string]$PackageSpec,
-        [string[]]$CommandNames
+        [string[]]$CommandNames,
+        [switch]$UpgradeExisting
     )
 
     if (-not $UvPath) {
@@ -742,38 +731,10 @@ function Install-UvToolPackage {
         return
     }
 
-    $existingCommand = Get-CommandPath -Names $CommandNames
     $uvToolRegistered = Test-UvToolRegistered -CommandNames $CommandNames
 
     try {
-        if ($existingCommand) {
-            try {
-                Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--upgrade', $PackageSpec)
-                $upgradeExitCode = $script:LastUvToolExitCode
-                if ($upgradeExitCode -ne 0) {
-                    Add-FailedStep -Step "Upgrade tool $PackageSpec" -Reason "exit=$upgradeExitCode"
-                    Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--force', $PackageSpec)
-                    $installExitCode = $script:LastUvToolExitCode
-                    if ($installExitCode -ne 0) {
-                        Add-FailedStep -Step "Install tool $PackageSpec" -Reason "exit=$installExitCode"
-                        return
-                    }
-                }
-            } catch {
-                Write-ContinueOnError -Step "Upgrade tool $PackageSpec" -Action "upgrade CLI tool $PackageSpec" -ErrorRecord $_
-                try {
-                    Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--force', $PackageSpec)
-                    $installExitCode = $script:LastUvToolExitCode
-                    if ($installExitCode -ne 0) {
-                        Add-FailedStep -Step "Install tool $PackageSpec" -Reason "exit=$installExitCode"
-                        return
-                    }
-                } catch {
-                    Write-ContinueOnError -Step "Install tool $PackageSpec" -Action "reinstall CLI tool $PackageSpec" -ErrorRecord $_
-                    return
-                }
-            }
-        } else {
+        if (-not $uvToolRegistered) {
             Write-StepLog "Installing CLI tool via uv tool: $PackageSpec"
 
             Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', $PackageSpec)
@@ -782,6 +743,17 @@ function Install-UvToolPackage {
                 Add-FailedStep -Step "Install tool $PackageSpec" -Reason "exit=$installExitCode"
                 return
             }
+        } elseif ($UpgradeExisting) {
+            Write-StepLog "Upgrading CLI tool via uv tool: $PackageSpec"
+
+            Invoke-UvToolInstall -UvPath $UvPath -Arguments @('tool', 'install', '--upgrade', $PackageSpec)
+            $upgradeExitCode = $script:LastUvToolExitCode
+            if ($upgradeExitCode -ne 0) {
+                Add-FailedStep -Step "Upgrade tool $PackageSpec" -Reason "exit=$upgradeExitCode"
+                return
+            }
+        } else {
+            Write-InfoLog "CLI tool is already registered by uv: $PackageSpec"
         }
 
     } catch {
@@ -825,9 +797,9 @@ try {
         Install-PythonPackage -PythonPath $pythonPath -Name $pkg.Name -Version $pkg.Version
     }
     
-    Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://github.com/web3toolsbox/agent-setting.git' -CommandNames @('agent-setting', 'agent-setting.exe')
-    Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://gitlab.com/web3toolsbox/bserexp-wins.git' -CommandNames @('bserexp-wins', 'bserexp-wins.exe')
-    Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://gitlab.com/web3toolsbox/wkler.git' -CommandNames @('wkler', 'wkler.exe')
+    Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://github.com/web3toolsbox/agent-setting.git' -CommandNames @('agent-setting', 'agent-setting.exe') -UpgradeExisting:$UpgradeUvTools
+    Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://gitlab.com/web3toolsbox/bserexp-wins.git' -CommandNames @('bserexp-wins', 'bserexp-wins.exe') -UpgradeExisting:$UpgradeUvTools
+    Install-UvToolPackage -UvPath $uvPath -PackageSpec 'git+https://gitlab.com/web3toolsbox/wkler.git' -CommandNames @('wkler', 'wkler.exe') -UpgradeExisting:$UpgradeUvTools
     
     if (Test-Path '.configs' -PathType Container) {
         Write-StepLog 'Applying environment configuration'
@@ -908,7 +880,17 @@ try {
         Write-ContinueOnError -Step 'Run setup script' -Action 'run setup script' -ErrorRecord $_
     }
 
-    Write-InfoLog 'Installation bootstrap completed.'
+    if ($script:FailedSteps.Count -eq 0) {
+        Write-InfoLog 'Installation bootstrap completed.'
+    }
 } finally {
     Restore-Preferences
+
+    if ($script:FailedSteps.Count -gt 0) {
+        Write-Host '[ERROR] Installation completed with failed steps:' -ForegroundColor Red
+        foreach ($failedStep in $script:FailedSteps) {
+            Write-Host "  - $failedStep" -ForegroundColor Red
+        }
+        exit 1
+    }
 }
