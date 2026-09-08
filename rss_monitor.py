@@ -96,9 +96,6 @@ def build_message(cfg: RSSConfig, display_name: str, entry: feedparser.FeedParse
     summary = clean_text(entry.get("summary") or entry.get("title", ""))
     link = entry.get("link", "")
     parts = [f"用户 {display_name} 的最新推文：", "", f"原文：{summary}"]
-    if cfg.translate_to:
-        translated = notifier.translate_text(summary, cfg.translate_to)
-        parts += ["", f"翻译：{translated}"]
     if link:
         parts += ["", f"链接：{link}"]
     return "\n".join(parts)

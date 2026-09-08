@@ -97,9 +97,6 @@ def build_message(cfg: Config, username: str, tweet: dict) -> str:
     tweet_id = tweet["id"]
     tweet_url = f"https://twitter.com/{username}/status/{tweet_id}"
     parts = [f"用户 @{username} 的最新推文：", "", f"原文：{text}"]
-    if cfg.translate_to:
-        translated = notifier.translate_text(text, cfg.translate_to)
-        parts += ["", f"翻译：{translated}"]
     parts += ["", f"推文链接：{tweet_url}"]
     return "\n".join(parts)
 

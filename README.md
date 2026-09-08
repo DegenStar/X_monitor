@@ -1,7 +1,6 @@
 # 🤖 X_monitor
 
 监听指定的 X(Twitter) 用户，当有新推文时自动推送到 Telegram。
-除原文外，还可附带翻译（默认简体中文）。
 
 提供两种方案：
 
@@ -10,7 +9,7 @@
 | 官方 API | `main.py` | 需付费 X API 额度 | 数据准确、稳定 |
 | RSS | `rss_monitor.py` | 免费 | 借助第三方 RSS 源，无需 X API |
 
-两种方案共用 Telegram 推送、翻译、状态持久化等逻辑（见 `notifier.py`）。
+两种方案共用 Telegram 推送、状态持久化等逻辑（见 `notifier.py`）。
 
 > **推荐 RSS 方案**：官方 API 需付费额度且要求 App 绑定 Project，否则会报
 > `client-not-enrolled` 403。RSS 方案免费、无需 X 开发者账号。
@@ -242,7 +241,6 @@ Register-ScheduledTask -TaskName "X_monitor" -Action $action -Trigger $trigger `
 | `POLL_INTERVAL` | `60` | 轮询间隔（秒） |
 | `REQUEST_DELAY` | `2` | 每个用户/源获取之间的等待（秒） |
 | `PIN_MESSAGE` | `false` | 是否自动置顶新推文 |
-| `TRANSLATE_TO` | `zh-CN` | 翻译目标语言（留空关闭翻译） |
 | `STATE_FILE` | 见下 | 状态保存位置（API 版默认 `latest_tweet_ids.json`，RSS 版默认 `latest_rss_ids.json`） |
 | `BEARER_TOKEN` | - | 仅 API 方案需要 |
 | `RSS_BASE_URL` | - | 仅 RSS 方案（方式 A），含 `{username}`；支持逗号分隔多个模板做备援 |

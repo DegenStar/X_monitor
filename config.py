@@ -48,7 +48,6 @@ class Config:
     poll_interval: int
     request_delay: int
     pin_message: bool
-    translate_to: str
     state_file: str
 
 
@@ -75,7 +74,6 @@ def load_config() -> Config:
         poll_interval=_get_int("POLL_INTERVAL", 60),
         request_delay=_get_int("REQUEST_DELAY", 2),
         pin_message=_get_bool("PIN_MESSAGE", False),
-        translate_to=os.environ.get("TRANSLATE_TO", "zh-CN").strip(),
         state_file=os.environ.get("STATE_FILE", "latest_tweet_ids.json").strip()
         or "latest_tweet_ids.json",
     )
@@ -94,7 +92,6 @@ class RSSConfig:
     poll_interval: int
     request_delay: int
     pin_message: bool
-    translate_to: str
     state_file: str
 
 
@@ -161,7 +158,6 @@ def load_rss_config() -> RSSConfig:
         poll_interval=_get_int("POLL_INTERVAL", 60),
         request_delay=_get_int("REQUEST_DELAY", 2),
         pin_message=_get_bool("PIN_MESSAGE", False),
-        translate_to=os.environ.get("TRANSLATE_TO", "zh-CN").strip(),
         state_file=os.environ.get("STATE_FILE", "latest_rss_ids.json").strip()
         or "latest_rss_ids.json",
     )

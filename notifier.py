@@ -1,4 +1,4 @@
-"""通用工具：翻译、Telegram 推送、状态持久化、可中断等待。
+"""通用工具：Telegram 推送、状态持久化、可中断等待。
 
 被 API 轮询版(main.py)与 RSS 版(rss_monitor.py)共同复用。
 """
@@ -61,34 +61,6 @@ def save_state(state_file: str, data: dict[str, str]) -> None:
         os.replace(tmp, state_file)
     except OSError as exc:
         logger.error("保存状态文件失败：%s", exc)
-
-
-# ---------------------------------------------------------------------------
-# 翻译
-# ---------------------------------------------------------------------------
-def translate_text(text: str, target_language: str) -> str:
-    """使用 Google 非官方翻译接口翻译，失败时返回原文。"""
-    if not target_language or not text:
-        return text
-    params = {
-        "client": "gtx",
-        "sl": "auto",
-        "tl": target_language,
-        "dt": "t",
-        "q": text,
-    }
-    try:
-        resp = requests.get(
-            "https://translate.googleapis.com/translate_a/single",
-            params=params,
-            timeout=HTTP_TIMEOUT,
-        )
-        resp.raise_for_status()
-        segments = resp.json()[0]
-        return "".join(seg[0] for seg in segments if seg and seg[0])
-    except (requests.RequestException, ValueError, IndexError, TypeError) as exc:
-        logger.warning("翻译失败（改用原文）：%s", exc)
-        return text
 
 
 def _redact(text: str, bot_token: str) -> str:
